@@ -328,10 +328,26 @@ return result;
 |---|---|---|---|---|
 | `0x01` | StorePairingKey | 16 zero bytes | 17 bytes | Store BLE pairing key on pump |
 | `0x02` | ClearPairingKey | 16 zero bytes | 17 bytes | Clear stored pairing key |
-| `0x03` | Ring | Unknown bytes† | variable | Make the pump beep/ring |
+| `0x03` | Ring | 16-byte beep pattern | 17 bytes | Make the pump beep/ring |
 | `0x05` | UnlockPump | `"OTOphaYROmOgYMER"` (16 bytes UTF-8) | 17 bytes | Unlock pump for operation |
 
-> † The Ring command payload structure could not be fully determined.
+### Special: Ring Pump
+
+The Ring command sends a fixed 16-byte beep pattern followed by the command ID:
+
+**Payload (16 bytes):**
+```
+0F 07 0F 07 0F 07 0F 00 00 00 00 00 00 00 00 00
+```
+
+**Pattern structure:** Three repetitions of `{0x0F, 0x07}` (likely frequency/duration pairs defining the beep pattern), followed by `0x0F` and 9 zero bytes (padding/silence).
+
+**Full wire format (17 bytes):**
+```
+03 0F 07 0F 07 0F 07 0F 00 00 00 00 00 00 00 00 00
+│  └──────────────── Ring payload (16 bytes) ──────┘
+└── Command ID = 0x03
+```
 
 ### Special: Unlock Pump
 
@@ -614,7 +630,16 @@ Uses Command Protocol: Command ID `0x02` + 16 zero bytes payload.
 **Characteristic:** `81232118-5ea1-589e-004d-6548f98fc73c`  
 **Analytics event:** `KLD__DATASOURCE__RING`
 
-Uses Command Protocol: Command ID `0x03` + payload (ring-specific data, exact format unknown).
+Uses Command Protocol: Command ID `0x03` + 16-byte fixed beep pattern.
+
+**Wire format (17 bytes total):**
+```
+03 0F 07 0F 07 0F 07 0F 00 00 00 00 00 00 00 00 00
+│  └──────────────── Beep pattern (16 bytes) ──────┘
+└── Command ID = 0x03
+```
+
+The payload is a hardcoded 16-byte array: `{0x0F, 0x07, 0x0F, 0x07, 0x0F, 0x07, 0x0F, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}`. The three `{0x0F, 0x07}` pairs likely represent frequency/duration beep parameters.
 
 ### 8.16 Write Cartridge Insertion Date
 
@@ -659,19 +684,19 @@ The central parser is `KldMessage.Companion.parse(UUID uuid, byte[] data)`. It s
 UUID → Parser Class → KldMessage subtype
 ```
 
-| UUID (short) | Parsed Type |
-|---|---|
-| `81232100` | `IduModeMessage(iduMode: KldIduMode)` |
-| `81232101` | `AlarmStatusMessage(alarmStatus: KldAlarmStatus)` |
-| `81232104` | `ReservoirLevelMessage(reservoirLevel: ReservoirLevel)` |
-| `81232105` | `DeliveryStateMessage(deliveryState: KldDeliveryState)` |
-| `81232109` | `TemporaryBasalTimeLeftMessage(duration: Duration)` |
-| `8123210b` | `CartridgeInsertionDateMessage(value: int)` |
-| `8123210c` | `DeliveryTypeMessage(deliveryType: KldDeliveryType)` |
-| `8123210e` | `PumpEventMessage` (abstract, multiple subtypes) |
-| `81232112` | `CurrentBasalRateMessage(currentBasalRateInPulses: int)` |
-| `00002a19` | `BatteryLevelMessage(batteryLevel: int)` |
-| *(default)* | `UnknownMessage` (singleton) |
+| UUID (short) | Parsed Type | DATA_SIZE |
+|---|---|---|
+| `81232100` | `IduModeMessage(iduMode: KldIduMode)` | 1 byte |
+| `81232101` | `AlarmStatusMessage(alarmStatus: KldAlarmStatus)` | 20 bytes |
+| `81232104` | `ReservoirLevelMessage(reservoirLevel: ReservoirLevel)` | 2 bytes |
+| `81232105` | `DeliveryStateMessage(deliveryState: KldDeliveryState)` | 1 byte |
+| `81232109` | `TemporaryBasalTimeLeftMessage(duration: Duration)` | 2 bytes |
+| `8123210b` | `RemainingBolusMessage(remainingBolusPulses: int)` | 2 bytes |
+| `8123210c` | `DeliveryTypeMessage(deliveryType: KldDeliveryType)` | 1 byte |
+| `8123210e` | `PumpEventMessage` (abstract, see subtypes below) | ≥ 12 bytes |
+| `81232112` | `CurrentBasalRateMessage(currentBasalRateInPulses: int)` | 2 bytes |
+| `00002a19` | `BatteryLevelMessage(batteryLevel: int)` | 1 byte |
+| *(default)* | `UnknownMessage` (singleton) | — |
 
 ### Parse Pattern
 
